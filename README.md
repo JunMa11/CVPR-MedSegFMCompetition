@@ -2,8 +2,6 @@
  Foundation Models for Biomedical Image Segmentation
 
 ## Evaluation
-# CVPR25 Segment Anything in Medical Images on a Laptop Challenge - Evaluation Script
-
 The evaluation script `CVPR25_iter_eval.py` evaluates Docker submissions for the **CVPR25 Segment Anything in Medical Images on a Laptop Challenge** using an iterative refinement approach.
 
 
@@ -33,9 +31,9 @@ python CVPR25_iter_eval.py --docker_folder path/to/docker_submissions --test_img
 For more details, refer to the challenge page: https://www.codabench.org/competitions/5263/
 
 
-### Clicks Accumulation in Prediction
+### Clicks Accumulation in Image Input
 
-During the prediction process, clicks are accumulated in the **`clicks`** key within the input `.npz` file.  
+During the prediction process, clicks are accumulated in the `clicks` key within the input `.npz` file.  
 
 An example of a list stored in the `clicks` key for an image with 4 targets and after all 5 clicks:  
 
