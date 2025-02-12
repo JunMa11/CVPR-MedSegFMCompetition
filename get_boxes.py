@@ -104,12 +104,12 @@ def process(file):
     imgs = npz['imgs']
     
     gts = npz['gts']
+    gts, _, _ = segmentation.relabel_sequential(gts)
     spacing = npz['spacing']
     unique_labs = np.unique(gts)[1:]
 
     boxes_list = []
     for lab in unique_labs:
-        print(lab)
         gt = gts==lab
         box_dict = mask3D_to_bbox(gt, file)
         boxes_list.append(box_dict)
