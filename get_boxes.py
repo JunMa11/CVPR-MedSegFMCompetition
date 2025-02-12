@@ -94,6 +94,7 @@ sanity_dir = os.path.join(path_dest, 'sanity')
 os.makedirs(sanity_dir, exist_ok=True)
 files = glob.glob(os.path.join(path, '*/*/*.npz'))
 files = [x for x in files if 'Microscopy' not in x]
+files = sorted(files)
 
 print(f'number of files {len(files)}')
 
