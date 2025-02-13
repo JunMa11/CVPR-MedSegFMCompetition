@@ -24,7 +24,7 @@ CVPR25_iter_eval.py
 --verbose
     -   Whether to have a more detailed output, e.g. coordinates of generated clicks
 
-This script is designed for evaluating docker submissions for the CVPR 2025: FOUNDATION MODELS FOR INTERACTIVE 3D BIOMEDICAL IMAGE SEGMENTATION Challenge
+This script is designed for evaluating docker submissions for the CVPR25: Foundation Models for Interactive 3D Biomedical Image Segmentation Challenge Challenge
 
 ##########################################################
 ######### Docker Submission Evaluation Process ###########

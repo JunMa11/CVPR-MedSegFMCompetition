@@ -2,7 +2,7 @@
  Foundation Models for Biomedical Image Segmentation
 
 ## Evaluation
-The evaluation script `CVPR25_iter_eval.py` evaluates Docker submissions for the **CVPR25 Segment Anything in Medical Images on a Laptop Challenge** using an iterative refinement approach.
+The evaluation script `CVPR25_iter_eval.py` evaluates Docker submissions for the **CVPR25: Foundation Models for Interactive 3D Biomedical Image Segmentation Challenge** using an iterative refinement approach.
 
 
 Run the script as follows:
