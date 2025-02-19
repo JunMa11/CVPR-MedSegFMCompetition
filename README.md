@@ -16,6 +16,7 @@ python CVPR25_iter_eval.py --docker_folder path/to/docker_submissions --test_img
 - `--test_img_path` : Path to the directory containing `.npz` test images.
 - `--save_path` : Directory to save segmentation outputs and evaluation metrics.
 - `--verbose` *(optional)* : Enables detailed output, including generated click coordinates.
+- `--validation_gts_path` Path to validation / test set GT files. This is needed to prevent label leakage (val/test) during the challenge.
 
 ### Evaluation Process
 1. **Loads Docker submissions** and processes test images one by one.
@@ -25,7 +26,9 @@ python CVPR25_iter_eval.py --docker_folder path/to/docker_submissions --test_img
 5. **Outputs results** as `.npz` files and a CSV summary.
 
 ### Output
-- Segmentation results are saved in the specified output directory.
+- Segmentation results are saved in the specified output directory. 
+    -   Final prediction in the `segs` key
+    -   All the 6 intermediate predictions in the `all_segs` key
 - Metrics for each test case are compiled into a CSV file.
 
 For more details, refer to the challenge page: https://www.codabench.org/competitions/5263/
@@ -44,3 +47,7 @@ An example of a list stored in the `clicks` key for an image with 4 targets and 
     {"fg": [[12, 287, 262], [12, 287, 262], [12, 287, 262], [12, 287, 262], [12, 287, 262]], "bg": []}, 
     {"fg": [[28, 199, 180], [28, 199, 180], [28, 199, 180], [28, 199, 180], [28, 199, 180]], "bg": []}, 
 ]
+```
+### Previous Prediction in Image Input
+
+The input image also contains the `prev_pred` key which stores the prediction from the previous iteration. This is used only to help with submissions that are using the previous prediction as an additional input.

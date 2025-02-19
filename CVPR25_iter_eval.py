@@ -21,8 +21,15 @@ CVPR25_iter_eval.py
         - case1.npz  # segmentation file name is the same as the testing image name
         - case2.npz  
         - ...
+--validation_gts_path # path to validation / test set GT files
+    -   Contains the npz files with the same name as the images but only 'gts' key is available in each file instead of storing it in the image itself. This is done to prevent label leakage during the challenge.
+    - validation_gts
+        - case1.npz  # file containing only the 'gts' key
+        - case2.npz  
+        - ...
 --verbose
     -   Whether to have a more detailed output, e.g. coordinates of generated clicks
+
 
 This script is designed for evaluating docker submissions for the CVPR25: Foundation Models for Interactive 3D Biomedical Image Segmentation Challenge Challenge
 
@@ -95,8 +102,16 @@ This script executes the following steps:
    - The last metric is the inference time which is the average inference time over the 6 interactive steps.
 
 5. Output:
-   - Segmentation results are saved in the specified output directory.
+   - Segmentation results are saved in the specified output directory. 
+        -   Final prediction in the 'segs' key
+        -   Intermediate prediction in the 'all_segs' key
    - Metrics for each test case are compiled into a CSV file.
+
+#################################
+############## Misc##############
+#################################
+- The input image also contains the 'prev_pred' key which stores the prediction from the previous iteration. This is used only to help with submission that are using the previous prediction as an additional input and is not
+a mandatory input.
 """
 
 import os
@@ -140,6 +155,7 @@ parser = argparse.ArgumentParser('Segmentation iterative refinement with clicks 
 parser.add_argument('-i', '--test_img_path', default='./test_demo/imgs', type=str, help='testing data path')
 parser.add_argument('-o','--save_path', default='./demo_seg', type=str, help='segmentation output path')
 parser.add_argument('-d','--docker_folder_path', default='./team_docker', type=str, help='team docker path')
+parser.add_argument('-val_gts','--validation_gts_path', default=None, type=str, help='path to validation set (or final test set) GT files')
 parser.add_argument('-v','--verbose', default=False, action='store_true', help="Verbose output, e.g., print coordinates of generated clicks")
 
 args = parser.parse_args()
@@ -147,6 +163,7 @@ args = parser.parse_args()
 test_img_path = args.test_img_path
 save_path = args.save_path
 docker_path = args.docker_folder_path
+validation_gts_path = args.validation_gts_path
 verbose = args.verbose
 
 input_temp = './inputs/'
@@ -192,10 +209,14 @@ for docker in dockers:
             real_running_time = 0
             dscs = []
             nsds = []
+            all_segs = []
 
             # copy input image to accumulate clicks in its dict
             shutil.copy(join(test_img_path, case), input_temp)
-            gts = np.load(join(input_temp, case))['gts']
+            if validation_gts_path is  None: # for training images
+                gts = np.load(join(input_temp, case))['gts']
+            else: # for validation or test images --> gts are in separate files to avoid label leakage during the course of the challenge
+                gts = np.load(join(validation_gts_path, case))['gts']
 
             # foreground and background clicks for each class
             clicks_cls = [{'fg': [], 'bg': []} for _ in np.unique(gts)[1:]] # skip background class 0 
@@ -208,9 +229,10 @@ for docker in dockers:
                     if verbose:
                         print(f'Using Clicks for iteration {it}')
                     if os.path.exists(join(output_temp, case)):
-                        segs = np.load(join(output_temp, case))['segs']
+                        segs = np.load(join(output_temp, case))['segs'].astype(np.uint8) # previous prediction
                     else:
-                        segs = np.zeros_like(gts) # in case the bbox prediction did not produce a result
+                        segs = np.zeros_like(gts).astype(np.uint8) # in case the bbox prediction did not produce a result
+                    all_segs.append(segs.astype(np.uint8))
 
                     # Refinement clicks
                     for ind, cls in enumerate(sorted(np.unique(gts)[1:])):
@@ -285,16 +307,30 @@ for docker in dockers:
                     # update model input with new click
                     input_img = np.load(join(input_temp, case))
 
-                    np.savez_compressed(
-                        join(input_temp, case),
-                        imgs=input_img['imgs'],
-                        gts=input_img['gts'],
-                        spacing=input_img['spacing'],
-                        clicks=clicks_cls, 
-                    ) 
+                    if validation_gts_path is None:
+                        np.savez_compressed(
+                            join(input_temp, case),
+                            imgs=input_img['imgs'],
+                            gts=input_img['gts'], # only for training images
+                            spacing=input_img['spacing'],
+                            clicks=clicks_cls, 
+                            prev_pred=segs,
+                        ) 
+                    else:
+                        np.savez_compressed(
+                            join(input_temp, case),
+                            imgs=input_img['imgs'],
+                            spacing=input_img['spacing'],
+                            clicks=clicks_cls, 
+                            prev_pred=segs,
+                        ) 
+                
 
                 # Model inference on the current input
-                cmd = 'docker container run -m 8G --name {} --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ {}:latest /bin/bash -c "sh predict.sh" '.format(teamname, teamname)
+                if torch.cuda.is_available(): # GPU available
+                    cmd = 'docker container run --gpus "device=0" -m 8G --name {} --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ {}:latest /bin/bash -c "sh predict.sh" '.format(teamname, teamname)
+                else:
+                    cmd = 'docker container run -m 8G --name {} --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ {}:latest /bin/bash -c "sh predict.sh" '.format(teamname, teamname)
                 if verbose:
                     print(teamname, ' docker command:', cmd, '\n', 'testing image name:', case)
                 start_time = time.time()
@@ -304,6 +340,8 @@ for docker in dockers:
 
                 # save metrics
                 segs = np.load(join(output_temp, case))['segs']
+                all_segs.append(segs.astype(np.uint8))
+
                 dsc = compute_multi_class_dsc(gts, segs)
                 # compute nsd
                 if dsc > 0.2:
@@ -316,9 +354,16 @@ for docker in dockers:
                 print('Dice', dsc, 'NSD', nsd)
                 seg_name = case
 
+
                 # Copy temp prediction to the final folder
                 try:
                     shutil.copy(join(output_temp, seg_name), join(team_outpath, seg_name))
+                    segs = np.load(join(team_outpath, seg_name))['segs']
+                    np.savez_compressed(
+                        join(team_outpath, seg_name),
+                        segs=segs,
+                        all_segs=all_segs, # store all intermediate predictions
+                    ) 
                 except:
                     print(f"{join(output_temp, seg_name)}, {join(team_outpath, seg_name)}")
                     print("Final prediction could not be copied!")
