@@ -197,12 +197,19 @@ for docker in dockers:
         metric = OrderedDict()
         metric['CaseName'] = []
         # 5 Metrics
-        metric['RunningTime'] = []
+        metric['TotalRunningTime'] = []
+        metric['RunningTime_1'] = []
+        metric['RunningTime_2'] = []
+        metric['RunningTime_3'] = []
+        metric['RunningTime_4'] = []
+        metric['RunningTime_5'] = []
+        metric['RunningTime_6'] = []
         metric['DSC_AUC'] = []
         metric['NSD_AUC'] = []
         metric['DSC_Final'] = []
         metric['NSD_Final'] = []
         n_clicks = 5
+        time_warning = False
 
         # To obtain the running time for each case, testing cases are inferred one-by-one
         for case in test_cases:
@@ -210,6 +217,7 @@ for docker in dockers:
             dscs = []
             nsds = []
             all_segs = []
+            no_bbox = False
 
             # copy input image to accumulate clicks in its dict
             shutil.copy(join(test_img_path, case), input_temp)
@@ -223,6 +231,12 @@ for docker in dockers:
             
             for it in range(n_clicks + 1): # + 1 due to bbox pred at iteration 0
                 if it == 0:
+                    if "boxes" not in np.load(join(input_temp, case)).keys():
+                        if verbose:
+                            print(f'This sample does not use a Bounding Box for the initial iteration {it}') 
+                        no_bbox = True
+                        metric["RunningTime_1"] = 0
+                        continue
                     if verbose:
                         print(f'Using Bounding Box for iteration {it}') 
                 else:
@@ -335,8 +349,10 @@ for docker in dockers:
                     print(teamname, ' docker command:', cmd, '\n', 'testing image name:', case)
                 start_time = time.time()
                 os.system(cmd)
-                real_running_time += time.time() - start_time # only add the inference time without the click generation time
-                print(f"{case} finished! Inference time: {time.time() - start_time}")
+                infer_time = time.time() - start_time
+                real_running_time += infer_time # only add the inference time without the click generation time
+                print(f"{case} finished! Inference time: {infer_time}")
+                metric[f"RunningTime_{it + 1}"] = infer_time
 
                 # save metrics
                 segs = np.load(join(output_temp, case))['segs']
@@ -369,13 +385,17 @@ for docker in dockers:
                     print("Final prediction could not be copied!")
             
 
+            if real_running_time > 90 * (len(np.unique(gts)) - 1):
+                print("[WARNING] Your model seems to take more than 90 seconds per class during inference! The final test set will have a time constraint of 90s per class --> Make sure to optimize your approach!")
+                time_warning = True
             # Compute interactive metrics
-            dsc_auc = integrate.cumulative_trapezoid(np.array(dscs), np.arange(n_clicks + 1))[-1]
-            nsd_auc = integrate.cumulative_trapezoid(np.array(nsds), np.arange(n_clicks + 1))[-1]
+            n_interactions = n_clicks if no_bbox else n_clicks + 1
+            dsc_auc = integrate.cumulative_trapezoid(np.array(dscs), np.arange(n_interactions))[-1]
+            nsd_auc = integrate.cumulative_trapezoid(np.array(nsds), np.arange(n_interactions))[-1]
             dsc_final = dscs[-1]
             nsd_final = nsds[-1]
             metric['CaseName'].append(case)
-            metric['RunningTime'].append(real_running_time / (n_clicks + 1))
+            metric['TotalRunningTime'].append(real_running_time)
             metric['DSC_AUC'].append(dsc_auc)
             metric['NSD_AUC'].append(nsd_auc)
             metric['DSC_Final'].append(dsc_final)
@@ -390,5 +410,7 @@ for docker in dockers:
         os.system("docker rmi {}:latest".format(teamname))
         shutil.rmtree(input_temp)
         shutil.rmtree(output_temp)
+        if time_warning: # repeat warning at the end as well
+            print("[WARNING] Your model seems to take more than 90 seconds per class during inference for some images! The final test set will have a time constraint of 90s per class --> Make sure to optimize your approach!")
     except Exception as e:
         print(e)

@@ -51,3 +51,28 @@ An example of a list stored in the `clicks` key for an image with 4 targets and 
 ### Previous Prediction in Image Input
 
 The input image also contains the `prev_pred` key which stores the prediction from the previous iteration. This is used only to help with submissions that are using the previous prediction as an additional input.
+
+### No Bounding Box key
+We also omit the `boxes` key in some of the validation and test samples as it is a bad prompt for some structures, such as vessels. In this case we simply skip the first inital prediction and only evaluate the models with 5 clicks using the same evaluation metrics.
+
+### Upper Time Bound During Testing
+We set a limit of 90 seconds per class during inference (whole docker run). If the inference time exceeds this bound, the corresponding DSC and NSD scores will be set as 0. When participants evaluate their models using the  `CVPR25_iter_eval.py` script they will receive a warning if their models exceed this limit.
+
+There are two motivations for this setting
+- The main focus of this competition is to prompt the interactive segmentation algorithm designs. Inference time should not be a huge concern/constraint for participants. 
+- It is very hard to evaluate the real inference time within docker since implementations also affect the docker overhead.
+
+### Final Script Output
+The `CVPR25_iter_eval.py` script will produce the following outputs in the `--save_path` argument:
+- `{teamname}_metrics.csv` that contains the following columns
+    - `CaseName`: Test / Validation image filename
+    - `TotalRunningTime`: Inference time taken for the image (all interactions)
+    - `RunningTime_{i}`: Inference time for interactions [1-6], 1: bbox, 2-6: clicks
+    - `DSC_AUC`: Area under DSC-to-Click curve metric
+    - `NSD_AUC`: Area under NSD-to-Click curve metric
+    - `DSC_Final`: DSC after final click
+    - `NSD_Final`: NSD after final click
+- `CASE_{i}.npz` - model output with keys:
+    - `segs`: Final prediction for all classes
+    - `all_segs`: All intermediate predictions of the model for interactions [1-6]
+
