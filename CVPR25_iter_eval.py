@@ -276,7 +276,7 @@ for docker in dockers:
                             # Get bounding box of the largest error component to limit computation
                             coords = np.argwhere(largest_component)
                             min_coords = coords.min(axis=0)
-                            max_coords = coords.max(axis=0) 
+                            max_coords = coords.max(axis=0) + 1
 
                             # Crop error to the bounding box of the largest error component
                             cropped_mask = largest_component[
@@ -286,8 +286,6 @@ for docker in dockers:
                             ]
 
                             # Compute distance transform only within the bounding box to save time
-                            edt = distance_transform_edt(cropped_mask)
-
                             if torch.cuda.is_available(): # GPU available
                                 import cupy as cp
                                 from cucim.core.operations import morphology
@@ -354,8 +352,11 @@ for docker in dockers:
                 print(f"{case} finished! Inference time: {infer_time}")
                 metric[f"RunningTime_{it + 1}"] = infer_time
 
-                # save metrics
-                segs = np.load(join(output_temp, case))['segs']
+                if not os.path.exists(np.load(join(output_temp, case))):
+                    print(f"[WARNING] Failed / Skipped prediction for iteration {ind}! Setting predcition to zeros...")
+                    segs = np.zeros_like(gts).astype(np.uint8)
+                else:
+                    segs = np.load(join(output_temp, case))['segs']
                 all_segs.append(segs.astype(np.uint8))
 
                 dsc = compute_multi_class_dsc(gts, segs)
