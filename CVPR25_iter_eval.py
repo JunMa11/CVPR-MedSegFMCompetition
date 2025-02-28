@@ -2,6 +2,11 @@
 The code was adapted from the CVPR24 Segment Anything in Medical Images on a Laptop Challenge
 https://www.codabench.org/competitions/1847/ 
 
+pip install connected-components-3d
+pip install cupy-cuda12x
+pip install cucim-cu12
+
+
 The testing images will be evaluated one by one.
 
 Folder structure:
@@ -129,6 +134,7 @@ from scipy.ndimage import distance_transform_edt
 import cc3d
 from SurfaceDice import compute_surface_distances, compute_surface_dice_at_tolerance, compute_dice_coefficient
 from scipy import integrate
+from tqdm import tqdm
 
 # Taken from CVPR24 challenge code with change to np.unique
 def compute_multi_class_dsc(gt, seg):
@@ -152,10 +158,10 @@ def compute_multi_class_nsd(gt, seg, spacing, tolerance=2.0):
     return np.mean(nsd)
 
 parser = argparse.ArgumentParser('Segmentation iterative refinement with clicks eavluation for docker containers', add_help=False)
-parser.add_argument('-i', '--test_img_path', default='./test_demo/imgs', type=str, help='testing data path')
-parser.add_argument('-o','--save_path', default='./demo_seg', type=str, help='segmentation output path')
+parser.add_argument('-i', '--test_img_path', default='3D_val_npz', type=str, help='testing data path')
+parser.add_argument('-o','--save_path', default='./seg', type=str, help='segmentation output path')
 parser.add_argument('-d','--docker_folder_path', default='./team_docker', type=str, help='team docker path')
-parser.add_argument('-val_gts','--validation_gts_path', default=None, type=str, help='path to validation set (or final test set) GT files')
+parser.add_argument('-val_gts','--validation_gts_path', default='3D_val_gt_interactive_seg', type=str, help='path to validation set (or final test set) GT files')
 parser.add_argument('-v','--verbose', default=False, action='store_true', help="Verbose output, e.g., print coordinates of generated clicks")
 
 args = parser.parse_args()
@@ -212,7 +218,7 @@ for docker in dockers:
         time_warning = False
 
         # To obtain the running time for each case, testing cases are inferred one-by-one
-        for case in test_cases:
+        for case in tqdm(test_cases):
             real_running_time = 0
             dscs = []
             nsds = []
@@ -242,7 +248,7 @@ for docker in dockers:
                 else:
                     if verbose:
                         print(f'Using Clicks for iteration {it}')
-                    if os.path.exists(join(output_temp, case)):
+                    if os.path.isfile(join(output_temp, case)):
                         segs = np.load(join(output_temp, case))['segs'].astype(np.uint8) # previous prediction
                     else:
                         segs = np.zeros_like(gts).astype(np.uint8) # in case the bbox prediction did not produce a result
@@ -352,7 +358,7 @@ for docker in dockers:
                 print(f"{case} finished! Inference time: {infer_time}")
                 metric[f"RunningTime_{it + 1}"] = infer_time
 
-                if not os.path.exists(np.load(join(output_temp, case))):
+                if not os.path.isfile(join(output_temp, case)):
                     print(f"[WARNING] Failed / Skipped prediction for iteration {ind}! Setting predcition to zeros...")
                     segs = np.zeros_like(gts).astype(np.uint8)
                 else:
@@ -403,8 +409,8 @@ for docker in dockers:
             metric['NSD_Final'].append(nsd_final)
             os.remove(join(input_temp, case))  
 
-        metric_df = pd.DataFrame(metric)
-        metric_df.to_csv(join(team_outpath, teamname + '_metrics.csv'), index=False)
+            metric_df = pd.DataFrame(metric)
+            metric_df.to_csv(join(team_outpath, teamname + '_metrics.csv'), index=False)
 
         # Clean up for next docker
         torch.cuda.empty_cache()
