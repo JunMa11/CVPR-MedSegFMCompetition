@@ -1,0 +1,7 @@
+torch
+connected-components-3d==3.12.4
+pandas==2.2.1
+numpy==1.26.3
+scipy==1.12.0
+cupy-cuda12x
+cucim==23.10.0

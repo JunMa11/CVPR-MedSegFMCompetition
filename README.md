@@ -4,6 +4,13 @@
 ## Evaluation
 The evaluation script `CVPR25_iter_eval.py` evaluates Docker submissions for the **CVPR25: Foundation Models for Interactive 3D Biomedical Image Segmentation Challenge** using an iterative refinement approach.
 
+### Installation
+Installation of packages for the evaluation script:
+```
+conda create -n cvpr_segfm_eval python=3.11 -y
+conda activate cvpr_segfm_eval
+pip install requirements.txt
+```
 
 Run the script as follows:
 
