@@ -172,6 +172,10 @@ docker_path = args.docker_folder_path
 validation_gts_path = args.validation_gts_path
 verbose = args.verbose
 
+if not os.path.exists(validation_gts_path):
+    validation_gts_path = None
+    print('[WARNING] Validation path does not exist for your GT data! Make sure you supplied the correct path or your .npz inputs have a gts key!')
+
 input_temp = './inputs/'
 output_temp = './outputs'
 os.makedirs(save_path, exist_ok=True)
@@ -214,6 +218,20 @@ for docker in dockers:
         metric['NSD_AUC'] = []
         metric['DSC_Final'] = []
         metric['NSD_Final'] = []
+        metric['DSC_1'] = []
+        metric['DSC_2'] = []    
+        metric['DSC_3'] = []
+        metric['DSC_4'] = []
+        metric['DSC_5'] = []
+        metric['DSC_6'] = []
+        metric['NSD_1'] = []
+        metric['NSD_2'] = []
+        metric['NSD_3'] = []
+        metric['NSD_4'] = []
+        metric['NSD_5'] = []
+        metric['NSD_6'] = []
+        metric['num_class'] = []
+        metric['runtime_upperbound'] = []
         n_clicks = 5
         time_warning = False
 
@@ -231,6 +249,10 @@ for docker in dockers:
                 gts = np.load(join(input_temp, case))['gts']
             else: # for validation or test images --> gts are in separate files to avoid label leakage during the course of the challenge
                 gts = np.load(join(validation_gts_path, case))['gts']
+            num_classes = len(np.unique(gts)) - 1
+            metric['num_class'].append(num_classes)
+            metric['runtime_upperbound'].append(num_classes * 90)
+
 
             # foreground and background clicks for each class
             clicks_cls = [{'fg': [], 'bg': []} for _ in np.unique(gts)[1:]] # skip background class 0 
@@ -241,7 +263,9 @@ for docker in dockers:
                         if verbose:
                             print(f'This sample does not use a Bounding Box for the initial iteration {it}') 
                         no_bbox = True
-                        metric["RunningTime_1"] = 0
+                        metric["RunningTime_1"].append(0)
+                        metric["DSC_1"].append(0)
+                        metric["NSD_1"].append(0)
                         continue
                     if verbose:
                         print(f'Using Bounding Box for iteration {it}') 
@@ -356,7 +380,7 @@ for docker in dockers:
                 infer_time = time.time() - start_time
                 real_running_time += infer_time # only add the inference time without the click generation time
                 print(f"{case} finished! Inference time: {infer_time}")
-                metric[f"RunningTime_{it + 1}"] = infer_time
+                metric[f"RunningTime_{it + 1}"].append(infer_time)
 
                 if not os.path.isfile(join(output_temp, case)):
                     print(f"[WARNING] Failed / Skipped prediction for iteration {ind}! Setting predcition to zeros...")
@@ -374,6 +398,8 @@ for docker in dockers:
                     nsd = 0.0 # Assume model performs poor on this sample
                 dscs.append(dsc)
                 nsds.append(nsd)
+                metric[f'DSC_{it + 1}'].append(dsc)
+                metric[f'NSD_{it + 1}'].append(nsd)
                 print('Dice', dsc, 'NSD', nsd)
                 seg_name = case
 
