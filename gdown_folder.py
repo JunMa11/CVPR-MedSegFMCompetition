@@ -17,7 +17,7 @@ def recursive_gdown(folder_id, current_path='', max_workers=4, quiet_gdown=False
     data = response.text
 
     # Extracting .npz filenames from the HTML
-    npz_pattern = r'<div class="flip-entry-title">(.*?\.npz)</div>'
+    npz_pattern = r'<div class="flip-entry-title">([^<]*?\.npz)</div>'
     npz_files = re.findall(npz_pattern, data)
 
     folder_title_match = re.search(r"<title>(.*?)</title>", data)
