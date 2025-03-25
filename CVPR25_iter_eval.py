@@ -266,6 +266,8 @@ for docker in dockers:
                         metric["RunningTime_1"].append(0)
                         metric["DSC_1"].append(0)
                         metric["NSD_1"].append(0)
+                        dscs.append(0)
+                        nsds.append(0)
                         continue
                     if verbose:
                         print(f'Using Bounding Box for iteration {it}') 
@@ -422,9 +424,8 @@ for docker in dockers:
                 print("[WARNING] Your model seems to take more than 90 seconds per class during inference! The final test set will have a time constraint of 90s per class --> Make sure to optimize your approach!")
                 time_warning = True
             # Compute interactive metrics
-            n_interactions = n_clicks if no_bbox else n_clicks + 1
-            dsc_auc = integrate.cumulative_trapezoid(np.array(dscs), np.arange(n_interactions))[-1]
-            nsd_auc = integrate.cumulative_trapezoid(np.array(nsds), np.arange(n_interactions))[-1]
+            dsc_auc = integrate.cumulative_trapezoid(np.array(dscs[-n_clicks:]), np.arange(n_clicks))[-1] # AUC is only over the point prompts since the bbox prompt is optional
+            nsd_auc = integrate.cumulative_trapezoid(np.array(nsds[-n_clicks:]), np.arange(n_clicks))[-1] 
             dsc_final = dscs[-1]
             nsd_final = nsds[-1]
             metric['CaseName'].append(case)
