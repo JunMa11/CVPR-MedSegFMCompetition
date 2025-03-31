@@ -28,6 +28,7 @@ import argparse
 from collections import OrderedDict
 import pandas as pd
 import numpy as np
+from skimage import segmentation,
 
 from SurfaceDice import compute_surface_distances, compute_surface_dice_at_tolerance, compute_dice_coefficient
 
@@ -133,8 +134,20 @@ for docker in dockers:
                 seg_npz = np.load(seg_path, allow_pickle=True)['segs']
 
                 # Calculate DSC and NSD
-                dsc = compute_multi_class_dsc(seg_npz, gt_npz)
-                nsd = compute_multi_class_nsd(seg_npz, gt_npz, np.load(join(input_temp, case), allow_pickle=True)['spacing'])
+                # get spacing from the 
+                img_npz = np.load(join(input_temp, case), allow_pickle=True)
+                spacing = img_npz['spacing']
+                instance_label = img_npz['text_prompts'].item()['instance_label']
+                if instance_label == 0:
+                    # note: the semantic labels may not be sequential
+                    dsc = compute_multi_class_dsc(seg_npz, gt_npz)
+                    nsd = compute_multi_class_nsd(seg_npz, gt_npz, spacing)
+                elif instance_label == 1:
+                    # make sure the instace labels are sequential: 0, 1, 2, 3, 4...
+                    gt_npz = segmentation.relabel_sequential(gt_npz)[0]
+                    dsc = compute_multi_class_dsc(seg_npz, gt_npz)
+                    nsd = compute_multi_class_nsd(seg_npz, gt_npz, spacing)                    
+
 
                 metric['DSC'].append(dsc)
                 metric['NSD'].append(nsd)
