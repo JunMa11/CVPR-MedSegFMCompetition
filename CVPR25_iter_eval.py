@@ -372,9 +372,9 @@ for docker in dockers:
 
                 # Model inference on the current input
                 if torch.cuda.is_available(): # GPU available
-                    cmd = 'docker container run --gpus "device=0" -m 8G --name {} --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ {}:latest /bin/bash -c "sh predict.sh" '.format(teamname, teamname)
+                    cmd = 'docker container run --gpus "device=0" -m 32G --name {} --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ {}:latest /bin/bash -c "sh predict.sh" '.format(teamname, teamname)
                 else:
-                    cmd = 'docker container run -m 8G --name {} --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ {}:latest /bin/bash -c "sh predict.sh" '.format(teamname, teamname)
+                    cmd = 'docker container run -m 32G --name {} --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ {}:latest /bin/bash -c "sh predict.sh" '.format(teamname, teamname)
                 if verbose:
                     print(teamname, ' docker command:', cmd, '\n', 'testing image name:', case)
                 start_time = time.time()
