@@ -28,7 +28,7 @@ import argparse
 from collections import OrderedDict
 import pandas as pd
 import numpy as np
-from skimage import segmentation,
+from skimage import segmentation
 
 from SurfaceDice import compute_surface_distances, compute_surface_dice_at_tolerance, compute_dice_coefficient
 
@@ -104,7 +104,7 @@ for docker in dockers:
         # To obtain the running time for each case, testing cases are inferred one-by-one
         for case in test_cases:
             shutil.copy(join(test_img_path, case), input_temp)
-            cmd = 'docker container run --gpus "device=0" -m 28G --name {} --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ {}:latest /bin/bash -c "sh predict.sh" '.format(teamname, teamname)
+            cmd = 'docker container run --gpus "device=0" -m 32G --name {} --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ {}:latest /bin/bash -c "sh predict.sh" '.format(teamname, teamname)
             print(teamname, ' docker command:', cmd, '\n', 'testing image name:', case)
 
             # run the docker container and measure inference time
