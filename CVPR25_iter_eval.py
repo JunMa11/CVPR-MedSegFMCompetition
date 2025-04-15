@@ -157,6 +157,77 @@ def compute_multi_class_nsd(gt, seg, spacing, tolerance=2.0):
         nsd.append(compute_surface_dice_at_tolerance(surface_distance, tolerance))
     return np.mean(nsd)
 
+def sample_coord(edt):
+    # Find all coordinates with max EDT value
+    np.random.seed(42)
+
+    max_val = edt.max()
+    max_coords = np.argwhere(edt == max_val)
+
+    # Uniformly choose one of them
+    chosen_index = max_coords[np.random.choice(len(max_coords))]
+
+    center = tuple(chosen_index)
+    return center
+
+# Compute the EDT with same shape as the image
+def compute_edt(error_component):
+    # Get bounding box of the largest error component to limit computation
+    coords = np.argwhere(error_component)
+    min_coords = coords.min(axis=0)
+    max_coords = coords.max(axis=0) + 1
+
+    crop_shape = max_coords - min_coords
+
+    # Compute padding (25% of crop size in each dimension)
+    padding = (crop_shape * 0.25).astype(int)
+
+    # Define new padded shape
+    padded_shape = crop_shape + 2 * padding
+
+    # Create new empty array with padding
+    center_crop = np.zeros(padded_shape, dtype=np.uint8)
+
+    # Fill center region with actual cropped data
+    center_crop[
+        padding[0]:padding[0] + crop_shape[0],
+        padding[1]:padding[1] + crop_shape[1],
+        padding[2]:padding[2] + crop_shape[2]
+    ] = error_component[
+        min_coords[0]:max_coords[0],
+        min_coords[1]:max_coords[1],
+        min_coords[2]:max_coords[2]
+    ]
+
+    # Compute EDT on the padded array
+    if torch.cuda.is_available(): # GPU available
+        import cupy as cp
+        from cucim.core.operations import morphology
+        error_mask_cp = cp.array(center_crop)
+        edt_cp = morphology.distance_transform_edt(error_mask_cp)
+        edt = cp.asnumpy(edt_cp)
+    else: # CPU available only
+        edt = distance_transform_edt(center_crop)
+
+    # Crop out the center (remove padding)
+    dist_cropped = edt[
+        padding[0]:padding[0] + crop_shape[0],
+        padding[1]:padding[1] + crop_shape[1],
+        padding[2]:padding[2] + crop_shape[2]
+    ]
+
+    # Create full-sized EDT result array and splat back 
+    dist_full = np.zeros_like(error_component, dtype=dist_cropped.dtype)
+    dist_full[
+        min_coords[0]:max_coords[0],
+        min_coords[1]:max_coords[1],
+        min_coords[2]:max_coords[2]
+    ] = dist_cropped
+
+    dist_transformed = dist_full
+
+    return dist_transformed
+
 parser = argparse.ArgumentParser('Segmentation iterative refinement with clicks eavluation for docker containers', add_help=False)
 parser.add_argument('-i', '--test_img_path', default='3D_val_npz', type=str, help='testing data path')
 parser.add_argument('-o','--save_path', default='./seg', type=str, help='segmentation output path')
@@ -256,7 +327,11 @@ for docker in dockers:
 
             # foreground and background clicks for each class
             clicks_cls = [{'fg': [], 'bg': []} for _ in np.unique(gts)[1:]] # skip background class 0 
+            clicks_order = []
+            if "boxes" in np.load(join(input_temp, case)).keys():
+                boxes = np.load(join(input_temp, case))['boxes']
             
+
             for it in range(n_clicks + 1): # + 1 due to bbox pred at iteration 0
                 if it == 0:
                     if "boxes" not in np.load(join(input_temp, case)).keys():
@@ -305,40 +380,17 @@ for docker in dockers:
                             # Find the voxel coordinates of the largest error component
                             largest_component = (errors == largest_component_error)
 
-                            # Get bounding box of the largest error component to limit computation
-                            coords = np.argwhere(largest_component)
-                            min_coords = coords.min(axis=0)
-                            max_coords = coords.max(axis=0) + 1
-
-                            # Crop error to the bounding box of the largest error component
-                            cropped_mask = largest_component[
-                                min_coords[0]:max_coords[0],
-                                min_coords[1]:max_coords[1],
-                                min_coords[2]:max_coords[2],
-                            ]
-
-                            # Compute distance transform only within the bounding box to save time
-                            if torch.cuda.is_available(): # GPU available
-                                import cupy as cp
-                                from cucim.core.operations import morphology
-                                error_mask_cp = cp.array(cropped_mask)
-                                edt_cp = morphology.distance_transform_edt(error_mask_cp)
-                                center = cp.unravel_index(cp.argmax(edt_cp), edt_cp.shape)
-                                center = np.array([int(center[0]), int(center[1]), int(center[2])])
-                            else: # CPU available only
-                                edt = distance_transform_edt(cropped_mask)
-                                # Find the center in the cropped mask
-                                center = np.unravel_index(np.argmax(edt), edt.shape)
-
-                            center = tuple(min_coords + center)
-
+                            edt = compute_edt(largest_component)
+                            center = sample_coord(edt)
 
                             if gts_cls[center] == 0: # oversegmentation -> place background click
                                 assert segs_cls[center] == 1
                                 clicks_cls[ind]['bg'].append(list(center))
+                                clicks_order.append('bg')
                             else: # undersegmentation -> place foreground click
                                 assert segs_cls[center] == 0
                                 clicks_cls[ind]['fg'].append(list(center))
+                                clicks_order.append('fg')
 
                             assert largest_component[center] # click within error
 
@@ -352,23 +404,47 @@ for docker in dockers:
                     input_img = np.load(join(input_temp, case))
 
                     if validation_gts_path is None:
-                        np.savez_compressed(
-                            join(input_temp, case),
-                            imgs=input_img['imgs'],
-                            gts=input_img['gts'], # only for training images
-                            spacing=input_img['spacing'],
-                            clicks=clicks_cls, 
-                            prev_pred=segs,
-                        ) 
+                        if no_bbox:
+                            np.savez_compressed(
+                                join(input_temp, case),
+                                imgs=input_img['imgs'],
+                                gts=input_img['gts'], # only for training images
+                                spacing=input_img['spacing'],
+                                clicks=clicks_cls,
+                                clicks_order=clicks_order, 
+                                prev_pred=segs,
+                            ) 
+                        else:
+                            np.savez_compressed(
+                                join(input_temp, case),
+                                imgs=input_img['imgs'],
+                                gts=input_img['gts'], # only for training images
+                                spacing=input_img['spacing'],
+                                clicks=clicks_cls, 
+                                clicks_order=clicks_order, 
+                                prev_pred=segs,
+                                boxes=boxes,
+                            ) 
                     else:
-                        np.savez_compressed(
-                            join(input_temp, case),
-                            imgs=input_img['imgs'],
-                            spacing=input_img['spacing'],
-                            clicks=clicks_cls, 
-                            prev_pred=segs,
-                        ) 
-                
+                        if no_bbox:
+                            np.savez_compressed(
+                                join(input_temp, case),
+                                imgs=input_img['imgs'],
+                                spacing=input_img['spacing'],
+                                clicks=clicks_cls, 
+                                clicks_order=clicks_order, 
+                                prev_pred=segs,
+                            ) 
+                        else:
+                            np.savez_compressed(
+                                join(input_temp, case),
+                                imgs=input_img['imgs'],
+                                spacing=input_img['spacing'],
+                                clicks=clicks_cls, 
+                                clicks_order=clicks_order, 
+                                prev_pred=segs,
+                                boxes=boxes,
+                            ) 
 
                 # Model inference on the current input
                 if torch.cuda.is_available(): # GPU available
