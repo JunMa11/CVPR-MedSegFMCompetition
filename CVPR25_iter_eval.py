@@ -327,7 +327,7 @@ for docker in dockers:
 
             # foreground and background clicks for each class
             clicks_cls = [{'fg': [], 'bg': []} for _ in np.unique(gts)[1:]] # skip background class 0 
-            clicks_order = []
+            clicks_order = [[] for _ in np.unique(gts)[1:]]
             if "boxes" in np.load(join(input_temp, case)).keys():
                 boxes = np.load(join(input_temp, case))['boxes']
             
@@ -386,11 +386,11 @@ for docker in dockers:
                             if gts_cls[center] == 0: # oversegmentation -> place background click
                                 assert segs_cls[center] == 1
                                 clicks_cls[ind]['bg'].append(list(center))
-                                clicks_order.append('bg')
+                                clicks_order[ind].append('bg')
                             else: # undersegmentation -> place foreground click
                                 assert segs_cls[center] == 0
                                 clicks_cls[ind]['fg'].append(list(center))
-                                clicks_order.append('fg')
+                                clicks_order[ind].append('fg')
 
                             assert largest_component[center] # click within error
 

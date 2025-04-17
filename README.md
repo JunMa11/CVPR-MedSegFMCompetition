@@ -55,12 +55,15 @@ An example of a list stored in the `clicks` key for an image with 4 targets and 
     {"fg": [[28, 199, 180], [28, 199, 180], [28, 199, 180], [28, 199, 180], [28, 199, 180]], "bg": []}, 
 ]
 ```
+### Clicks Order
+We also provide the order in which the clicks were generated in a ancilliary key `clicks_order` that is a simple list with values `fg` and `bg`, e.g., `['fg', 'fg', 'bg']`, indicating that the first two clicks were foreground clicks and the last a background click. 
 ### Previous Prediction in Image Input
 
 The input image also contains the `prev_pred` key which stores the prediction from the previous iteration. This is used only to help with submissions that are using the previous prediction as an additional input.
 
 ### No Bounding Box key
 We also omit the `boxes` key in some of the validation and test samples as it is a bad prompt for some structures, such as vessels. In this case we simply skip the first inital prediction and only evaluate the models with 5 clicks using the same evaluation metrics.
+
 
 ### Upper Time Bound During Testing
 We set a limit of 90 seconds per class during inference (whole docker run). If the inference time exceeds this bound, the corresponding DSC and NSD scores will be set as 0. When participants evaluate their models using the  `CVPR25_iter_eval.py` script they will receive a warning if their models exceed this limit.
