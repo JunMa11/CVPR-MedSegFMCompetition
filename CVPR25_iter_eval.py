@@ -180,7 +180,8 @@ def compute_edt(error_component):
     crop_shape = max_coords - min_coords
 
     # Compute padding (25% of crop size in each dimension)
-    padding = (crop_shape * 0.25).astype(int)
+    padding =  np.maximum((crop_shape * 0.25).astype(int), 1)
+
 
     # Define new padded shape
     padded_shape = crop_shape + 2 * padding
