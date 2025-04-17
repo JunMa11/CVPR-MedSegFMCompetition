@@ -139,7 +139,7 @@ from tqdm import tqdm
 # Taken from CVPR24 challenge code with change to np.unique
 def compute_multi_class_dsc(gt, seg):
     dsc = []
-    for i in np.unique(gt)[1:]: # skip bg
+    for i in np.sort(pd.unique(gt.ravel()))[1:]: # skip bg
         gt_i = gt == i
         seg_i = seg == i
         dsc.append(compute_dice_coefficient(gt_i, seg_i))
@@ -148,7 +148,7 @@ def compute_multi_class_dsc(gt, seg):
 # Taken from CVPR24 challenge code with change to np.unique
 def compute_multi_class_nsd(gt, seg, spacing, tolerance=2.0):
     nsd = []
-    for i in np.unique(gt)[1:]: # skip bg
+    for i in np.sort(pd.unique(gt.ravel()))[1:]: # skip bg
         gt_i = gt == i
         seg_i = seg == i
         surface_distance = compute_surface_distances(
@@ -321,14 +321,16 @@ for docker in dockers:
                 gts = np.load(join(input_temp, case))['gts']
             else: # for validation or test images --> gts are in separate files to avoid label leakage during the course of the challenge
                 gts = np.load(join(validation_gts_path, case))['gts']
-            num_classes = len(np.unique(gts)) - 1
+                
+            unique_gts = np.sort(pd.unique(gts.ravel()))
+            num_classes = len(unique_gts) - 1
             metric['num_class'].append(num_classes)
             metric['runtime_upperbound'].append(num_classes * 90)
 
 
             # foreground and background clicks for each class
-            clicks_cls = [{'fg': [], 'bg': []} for _ in np.unique(gts)[1:]] # skip background class 0 
-            clicks_order = [[] for _ in np.unique(gts)[1:]]
+            clicks_cls = [{'fg': [], 'bg': []} for _ in unique_gts[1:]] # skip background class 0 
+            clicks_order = [[] for _ in unique_gts[1:]]
             if "boxes" in np.load(join(input_temp, case)).keys():
                 boxes = np.load(join(input_temp, case))['boxes']
             
@@ -357,7 +359,7 @@ for docker in dockers:
                     all_segs.append(segs.astype(np.uint8))
 
                     # Refinement clicks
-                    for ind, cls in enumerate(sorted(np.unique(gts)[1:])):
+                    for ind, cls in enumerate(sorted(unique_gts[1:])):
                         if cls == 0:
                             continue # skip background
 
@@ -497,7 +499,7 @@ for docker in dockers:
                     print("Final prediction could not be copied!")
             
 
-            if real_running_time > 90 * (len(np.unique(gts)) - 1):
+            if real_running_time > 90 * (len(unique_gts) - 1):
                 print("[WARNING] Your model seems to take more than 90 seconds per class during inference! The final test set will have a time constraint of 90s per class --> Make sure to optimize your approach!")
                 time_warning = True
             # Compute interactive metrics
