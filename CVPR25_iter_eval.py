@@ -319,6 +319,8 @@ for docker in dockers:
 
         # To obtain the running time for each case, testing cases are inferred one-by-one
         for case in tqdm(test_cases):
+
+            metric_temp = {}
             real_running_time = 0
             dscs = []
             nsds = []
@@ -328,32 +330,32 @@ for docker in dockers:
             # copy input image to accumulate clicks in its dict
             shutil.copy(join(test_img_path, case), input_temp)
             if validation_gts_path is  None: # for training images
-                gts = np.load(join(input_temp, case))['gts']
+                gts = np.load(join(input_temp, case), allow_pickle=True)['gts']
             else: # for validation or test images --> gts are in separate files to avoid label leakage during the course of the challenge
-                gts = np.load(join(validation_gts_path, case))['gts']
+                gts = np.load(join(validation_gts_path, case), allow_pickle=True)['gts']
                 
             unique_gts = np.sort(pd.unique(gts.ravel()))
             num_classes = len(unique_gts) - 1
-            metric['num_class'].append(num_classes)
-            metric['runtime_upperbound'].append(num_classes * 90)
+            metric_temp['num_class'] = num_classes
+            metric_temp['runtime_upperbound'] = num_classes * 90
 
 
             # foreground and background clicks for each class
             clicks_cls = [{'fg': [], 'bg': []} for _ in unique_gts[1:]] # skip background class 0 
             clicks_order = [[] for _ in unique_gts[1:]]
-            if "boxes" in np.load(join(input_temp, case)).keys():
-                boxes = np.load(join(input_temp, case))['boxes']
+            if "boxes" in np.load(join(input_temp, case), allow_pickle=True).keys():
+                boxes = np.load(join(input_temp, case), allow_pickle=True)['boxes']
             
 
             for it in range(n_clicks + 1): # + 1 due to bbox pred at iteration 0
                 if it == 0:
-                    if "boxes" not in np.load(join(input_temp, case)).keys():
+                    if "boxes" not in np.load(join(input_temp, case), allow_pickle=True).keys():
                         if verbose:
                             print(f'This sample does not use a Bounding Box for the initial iteration {it}') 
                         no_bbox = True
-                        metric["RunningTime_1"].append(0)
-                        metric["DSC_1"].append(0)
-                        metric["NSD_1"].append(0)
+                        metric_temp["RunningTime_1"] = 0
+                        metric_temp["DSC_1"] = 0
+                        metric_temp["NSD_1"] = 0
                         dscs.append(0)
                         nsds.append(0)
                         continue
@@ -363,7 +365,7 @@ for docker in dockers:
                     if verbose:
                         print(f'Using Clicks for iteration {it}')
                     if os.path.isfile(join(output_temp, case)):
-                        segs = np.load(join(output_temp, case))['segs'].astype(np.uint8) # previous prediction
+                        segs = np.load(join(output_temp, case), allow_pickle=True)['segs'].astype(np.uint8) # previous prediction
                     else:
                         segs = np.zeros_like(gts).astype(np.uint8) # in case the bbox prediction did not produce a result
                     all_segs.append(segs.astype(np.uint8))
@@ -414,7 +416,7 @@ for docker in dockers:
                                 print(f"Class {cls}: No error connected components found. Prediction is perfect! No clicks were added.")
                     
                     # update model input with new click
-                    input_img = np.load(join(input_temp, case))
+                    input_img = np.load(join(input_temp, case), allow_pickle=True)
 
                     if validation_gts_path is None:
                         if no_bbox:
@@ -461,9 +463,9 @@ for docker in dockers:
 
                 # Model inference on the current input
                 if torch.cuda.is_available(): # GPU available
-                    cmd = 'docker container run --gpus "device=0" -m 32G --name {} --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ {}:latest /bin/bash -c "sh predict.sh" '.format(teamname, teamname)
+                    cmd = 'docker container run --gpus "device=0" -m 32G --name {} --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ {}:latest /bin/bash -c "sh predict.sh" '.format(teamname.replace('/', '_'), teamname)
                 else:
-                    cmd = 'docker container run -m 32G --name {} --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ {}:latest /bin/bash -c "sh predict.sh" '.format(teamname, teamname)
+                    cmd = 'docker container run -m 32G --name {} --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ {}:latest /bin/bash -c "sh predict.sh" '.format(teamname.replace('/', '_'), teamname)
                 if verbose:
                     print(teamname, ' docker command:', cmd, '\n', 'testing image name:', case)
                 start_time = time.time()
@@ -471,26 +473,26 @@ for docker in dockers:
                 infer_time = time.time() - start_time
                 real_running_time += infer_time # only add the inference time without the click generation time
                 print(f"{case} finished! Inference time: {infer_time}")
-                metric[f"RunningTime_{it + 1}"].append(infer_time)
+                metric_temp[f"RunningTime_{it + 1}"] = infer_time
 
                 if not os.path.isfile(join(output_temp, case)):
                     print(f"[WARNING] Failed / Skipped prediction for iteration {it}! Setting prediction to zeros...")
                     segs = np.zeros_like(gts).astype(np.uint8)
                 else:
-                    segs = np.load(join(output_temp, case))['segs']
+                    segs = np.load(join(output_temp, case), allow_pickle=True)['segs']
                 all_segs.append(segs.astype(np.uint8))
 
                 dsc = compute_multi_class_dsc(gts, segs)
                 # compute nsd
                 if dsc > 0.2:
                     # only compute nsd when dice > 0.2 because NSD is also low when dice is too low
-                    nsd = compute_multi_class_nsd(gts, segs, np.load(join(input_temp, case))['spacing'])
+                    nsd = compute_multi_class_nsd(gts, segs, np.load(join(input_temp, case), allow_pickle=True)['spacing'])
                 else:
                     nsd = 0.0 # Assume model performs poor on this sample
                 dscs.append(dsc)
                 nsds.append(nsd)
-                metric[f'DSC_{it + 1}'].append(dsc)
-                metric[f'NSD_{it + 1}'].append(nsd)
+                metric_temp[f'DSC_{it + 1}'] = dsc
+                metric_temp[f'NSD_{it + 1}'] = nsd
                 print('Dice', dsc, 'NSD', nsd)
                 seg_name = case
 
@@ -498,7 +500,7 @@ for docker in dockers:
                 # Copy temp prediction to the final folder
                 try:
                     shutil.copy(join(output_temp, seg_name), join(team_outpath, seg_name))
-                    segs = np.load(join(team_outpath, seg_name))['segs']
+                    segs = np.load(join(team_outpath, seg_name), allow_pickle=True)['segs']
                     np.savez_compressed(
                         join(team_outpath, seg_name),
                         segs=segs,
@@ -506,6 +508,8 @@ for docker in dockers:
                     ) 
                 except:
                     print(f"{join(output_temp, seg_name)}, {join(team_outpath, seg_name)}")
+                    if os.path.exists(join(team_outpath, seg_name)):
+                        os.remove(team_outpath, seg_name) # clean up cached files if model has failed
                     print("Final prediction could not be copied!")
             
 
@@ -517,16 +521,19 @@ for docker in dockers:
             nsd_auc = integrate.cumulative_trapezoid(np.array(nsds[-n_clicks:]), np.arange(n_clicks))[-1] 
             dsc_final = dscs[-1]
             nsd_final = nsds[-1]
-            metric['CaseName'].append(case)
-            metric['TotalRunningTime'].append(real_running_time)
-            metric['DSC_AUC'].append(dsc_auc)
-            metric['NSD_AUC'].append(nsd_auc)
-            metric['DSC_Final'].append(dsc_final)
-            metric['NSD_Final'].append(nsd_final)
+            if os.path.exists(join(team_outpath, seg_name)): # add to csv only if final prediction is successful
+                for k, v in metric_temp.items():
+                    metric[k].append(v)
+                metric['CaseName'].append(case)
+                metric['TotalRunningTime'].append(real_running_time)
+                metric['DSC_AUC'].append(dsc_auc)
+                metric['NSD_AUC'].append(nsd_auc)
+                metric['DSC_Final'].append(dsc_final)
+                metric['NSD_Final'].append(nsd_final)
             os.remove(join(input_temp, case))  
 
-            metric_df = pd.DataFrame(metric)
-            metric_df.to_csv(join(team_outpath, teamname + '_metrics.csv'), index=False)
+        metric_df = pd.DataFrame(metric)
+        metric_df.to_csv(join(team_outpath, teamname.replace('/', '_') + '_metrics.csv'), index=False)
 
         # Clean up for next docker
         torch.cuda.empty_cache()
