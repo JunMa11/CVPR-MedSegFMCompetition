@@ -200,15 +200,25 @@ def compute_edt(error_component):
         min_coords[2]:max_coords[2]
     ]
 
+    large_roi = False
+    if center_crop.shape[0] * center_crop.shape[1] * center_crop.shape[2] > 60000000:
+        from skimage.measure import block_reduce
+        print(f'ROI too large {center_crop.shape} --> 2x downsampling for EDT')
+        center_crop = block_reduce(center_crop, block_size=(2, 2, 2), func=np.max)
+        large_roi = True
+
     # Compute EDT on the padded array
-    if torch.cuda.is_available(): # GPU available
+    if torch.cuda.is_available() and not large_roi: # GPU available
         import cupy as cp
         from cucim.core.operations import morphology
         error_mask_cp = cp.array(center_crop)
-        edt_cp = morphology.distance_transform_edt(error_mask_cp)
+        edt_cp = morphology.distance_transform_edt(error_mask_cp, return_distances=True)
         edt = cp.asnumpy(edt_cp)
     else: # CPU available only
         edt = distance_transform_edt(center_crop)
+    
+    if large_roi: # upsample
+        edt = edt.repeat(2, axis=0).repeat(2, axis=1).repeat(2, axis=2)
 
     # Crop out the center (remove padding)
     dist_cropped = edt[
@@ -464,7 +474,7 @@ for docker in dockers:
                 metric[f"RunningTime_{it + 1}"].append(infer_time)
 
                 if not os.path.isfile(join(output_temp, case)):
-                    print(f"[WARNING] Failed / Skipped prediction for iteration {ind}! Setting predcition to zeros...")
+                    print(f"[WARNING] Failed / Skipped prediction for iteration {it}! Setting prediction to zeros...")
                     segs = np.zeros_like(gts).astype(np.uint8)
                 else:
                     segs = np.load(join(output_temp, case))['segs']
