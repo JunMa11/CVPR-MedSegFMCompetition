@@ -29,6 +29,9 @@ from collections import OrderedDict
 import pandas as pd
 import numpy as np
 from skimage import segmentation
+from scipy.optimize import linear_sum_assignment
+import cc3d
+import SimpleITK as sitk
 
 from SurfaceDice import compute_surface_distances, compute_surface_dice_at_tolerance, compute_dice_coefficient
 
@@ -53,11 +56,102 @@ def compute_multi_class_nsd(gt, seg, spacing, tolerance=2.0):
         nsd.append(compute_surface_dice_at_tolerance(surface_distance, tolerance))
     return np.mean(nsd)
 
+def _label_overlap(x, y):
+    """ fast function to get pixel overlaps between masks in x and y 
+    
+    Parameters
+    ------------
+
+    x: ND-array, int
+        where 0=NO masks; 1,2... are mask labels
+    y: ND-array, int
+        where 0=NO masks; 1,2... are mask labels
+
+    Returns
+    ------------
+
+    overlap: ND-array, int
+        matrix of pixel overlaps of size [x.max()+1, y.max()+1]
+    
+    """
+    x = x.ravel()
+    y = y.ravel()
+    
+    # preallocate a 'contact map' matrix
+    overlap = np.zeros((1+x.max(),1+y.max()), dtype=np.uint)
+    
+    # loop over the labels in x and add to the corresponding
+    # overlap entry. If label A in x and label B in y share P
+    # pixels, then the resulting overlap is P
+    # len(x)=len(y), the number of pixels in the whole image 
+    for i in range(len(x)):
+        overlap[x[i],y[i]] += 1
+    return overlap
+
+def _intersection_over_union(masks_true, masks_pred):
+    """ intersection over union of all mask pairs
+    
+    Parameters
+    ------------
+    
+    masks_true: ND-array, int 
+        ground truth masks, where 0=NO masks; 1,2... are mask labels
+    masks_pred: ND-array, int
+        predicted masks, where 0=NO masks; 1,2... are mask labels
+    """
+    overlap = _label_overlap(masks_true, masks_pred)
+    n_pixels_pred = np.sum(overlap, axis=0, keepdims=True)
+    n_pixels_true = np.sum(overlap, axis=1, keepdims=True)
+    iou = overlap / (n_pixels_pred + n_pixels_true - overlap)
+    iou[np.isnan(iou)] = 0.0
+    return iou
+
+def _true_positive(iou, th):
+    """ true positive at threshold th
+    
+    Parameters
+    ------------
+
+    iou: float, ND-array
+        array of IOU pairs
+    th: float
+        threshold on IOU for positive label
+
+    Returns
+    ------------
+
+    tp: float
+        number of true positives at threshold
+    """
+    n_min = min(iou.shape[0], iou.shape[1])
+    costs = -(iou >= th).astype(float) - iou / (2*n_min)
+    true_ind, pred_ind = linear_sum_assignment(costs)
+    match_ok = iou[true_ind, pred_ind] >= th
+    tp = match_ok.sum()
+    return tp
+
+def eval_tp_fp_fn(masks_true, masks_pred, threshold=0.5):
+    num_inst_gt = np.max(masks_true)
+    num_inst_seg = np.max(masks_pred)
+    if num_inst_seg>0:
+        iou = _intersection_over_union(masks_true, masks_pred)[1:, 1:]
+            # for k,th in enumerate(threshold):
+        tp = _true_positive(iou, threshold)
+        fp = num_inst_seg - tp
+        fn = num_inst_gt - tp
+    else:
+        # print('No segmentation results!')
+        tp = 0
+        fp = 0
+        fn = 0
+        
+    return tp, fp, fn
+
 parser = argparse.ArgumentParser('Segmentation eavluation for docker containers', add_help=False)
-parser.add_argument('-i', '--test_img_path', default='./3D_val_img', type=str, help='testing data path')
-parser.add_argument('-val_gts','--validation_gts_path', default='./3D_val_gt', type=str, help='path to validation set (or final test set) GT files')
-parser.add_argument('-o','--save_path', default='./seg', type=str, help='segmentation output path')
-parser.add_argument('-d','--docker_folder_path', default='./team_docker', type=str, help='team docker path')
+parser.add_argument('-i', '--test_img_path', default='./3D_val_npz', type=str, help='testing data path')
+parser.add_argument('-val_gts','--validation_gts_path', default='./3D_val_gt_text_seg', type=str, help='path to validation set (or final test set) GT files')
+parser.add_argument('-o','--save_path', default='./outputs', type=str, help='segmentation output path')
+parser.add_argument('-d','--docker_folder_path', default='./team_dockers', type=str, help='team docker path')
 args = parser.parse_args()  
 
 test_img_path = args.test_img_path
@@ -100,6 +194,11 @@ for docker in dockers:
         metric['RunningTime'] = []  
         metric['DSC'] = []
         metric['NSD'] = []
+        metric['F1_0.5'] = []
+        metric['F1_0.6'] = []  
+        metric['F1_0.7'] = [] 
+        metric['F1_0.8'] = [] 
+        metric['F1_0.9'] = []  
 
         # To obtain the running time for each case, testing cases are inferred one-by-one
         for case in test_cases:
@@ -121,7 +220,6 @@ for docker in dockers:
             metric['CaseName'].append(case)
             metric['RunningTime'].append(real_running_time)
 
-
             # Metric calculation (DSC and NSD)
             seg_name = case
             gt_path = join(validation_gts_path, seg_name)
@@ -130,34 +228,69 @@ for docker in dockers:
             try:
                 # Load ground truth and segmentation masks
                 gt_npz = np.load(gt_path, allow_pickle=True)['gts']
-
                 seg_npz = np.load(seg_path, allow_pickle=True)['segs']
 
+                gt_npz = gt_npz.astype(np.uint8)
+                seg_npz = seg_npz.astype(np.uint8)
+
                 # Calculate DSC and NSD
-                # get spacing from the 
                 img_npz = np.load(join(input_temp, case), allow_pickle=True)
                 spacing = img_npz['spacing']
                 instance_label = img_npz['text_prompts'].item()['instance_label']
-                if instance_label == 0:
+
+                if instance_label == 0:     # semantic masks
                     # note: the semantic labels may not be sequential
                     dsc = compute_multi_class_dsc(seg_npz, gt_npz)
                     nsd = compute_multi_class_nsd(seg_npz, gt_npz, spacing)
-                elif instance_label == 1:
-                    # make sure the instace labels are sequential: 0, 1, 2, 3, 4...
+                    f1_scores = {threshold: np.NAN for threshold in [0.5, 0.6, 0.7, 0.8, 0.9]}
+                elif instance_label == 1:  # instance masks
+                    # Calculate F1 instead
+                    if len(np.unique(seg_npz)) == 2:
+                        print("converting segmentation to instance masks")
+                        # convert prediction masks from binary to instance
+                        tumor_inst, tumor_n = cc3d.connected_components(
+                            seg_npz, connectivity=6, return_N=True
+                        )
+
+                        # put the tumor instances back to gt_data_ori
+                        seg_npz[tumor_inst > 0] = (tumor_inst[tumor_inst > 0] + np.max(seg_npz))
+
                     gt_npz = segmentation.relabel_sequential(gt_npz)[0]
-                    dsc = compute_multi_class_dsc(seg_npz, gt_npz)
-                    nsd = compute_multi_class_nsd(seg_npz, gt_npz, spacing)                    
+                    seg_npz = segmentation.relabel_sequential(seg_npz)[0]
+                    
+                    
+                    cell_pred_num = np.max(seg_npz)
+                    cell_true_num = np.max(gt_npz)
 
+                    f1_scores = {}
+                    for threshold in [0.5, 0.6, 0.7, 0.8, 0.9]:
+                        tp, fp, fn = eval_tp_fp_fn(gt_npz, seg_npz, threshold=threshold)
+    
+                        if tp == 0:
+                            precision = 0
+                            recall = 0
+                            f1 = 0
+                        else:
+                            precision = tp / cell_pred_num
+                            recall = tp / cell_true_num
+                            f1 = 2 * (precision * recall)/ (precision + recall)
+                        f1_scores[threshold] = f1
 
-                metric['DSC'].append(dsc)
-                metric['NSD'].append(nsd)
+                    # Set DSC and NSD to None for instance masks
+                    dsc = None
+                    nsd = None
+                                     
+                metric['DSC'].append(round(dsc, 4) if dsc is not None else np.NAN)
+                metric['NSD'].append(round(nsd, 4) if nsd is not None else np.NAN)
+                # Append F1 scores for all thresholds
+                for threshold in [0.5, 0.6, 0.7, 0.8, 0.9]:
+                    value = f1_scores[threshold]
+                    metric[f'F1_{threshold}'].append(round(value, 4) if value != np.NAN else np.NAN)
 
-                print(f"{case}: DSC={dsc:.4f}, NSD={nsd:.4f}")
-
+                print(f"{case}: DSC={dsc if dsc is not None else np.NAN}, NSD={nsd if nsd is not None else np.NAN}, F1={f1_scores}")
+            
             except Exception as e:
                 print(f"Error processing {case}: {e}")
-                metric['DSC'].append(0.0)
-                metric['NSD'].append(0.0)
 
             # the segmentation file name should be the same as the testing image name
             try:
