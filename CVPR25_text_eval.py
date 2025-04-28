@@ -35,25 +35,25 @@ import SimpleITK as sitk
 
 from SurfaceDice import compute_surface_distances, compute_surface_dice_at_tolerance, compute_dice_coefficient
 
-# Taken from CVPR24 challenge code with change to np.unique
 def compute_multi_class_dsc(gt, seg):
-    dsc = []
-    for i in np.unique(gt)[1:]: # skip bg
+    label_ids = np.unique(gt)[1:]
+    dsc = [None] * len(label_ids)
+    for idx, i in enumerate(label_ids):
         gt_i = gt == i
         seg_i = seg == i
-        dsc.append(compute_dice_coefficient(gt_i, seg_i))
+        dsc[idx] = compute_dice_coefficient(gt_i, seg_i)
+
     return np.mean(dsc)
 
-# Taken from CVPR24 challenge code with change to np.unique
 def compute_multi_class_nsd(gt, seg, spacing, tolerance=2.0):
     nsd = []
-    for i in np.unique(gt)[1:]: # skip bg
+    label_ids = np.unique(gt)[1:]
+    nsd = [None] * len(label_ids)
+    for idx, i in enumerate(label_ids):
         gt_i = gt == i
         seg_i = seg == i
-        surface_distance = compute_surface_distances(
-            gt_i, seg_i, spacing_mm=spacing
-        )
-        nsd.append(compute_surface_dice_at_tolerance(surface_distance, tolerance))
+        surface_distance = compute_surface_distances(gt_i, seg_i, spacing_mm=spacing)
+        nsd[idx] = compute_surface_dice_at_tolerance(surface_distance, tolerance)
     return np.mean(nsd)
 
 def _label_overlap(x, y):
