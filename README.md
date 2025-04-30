@@ -9,7 +9,7 @@ Installation of packages for the evaluation script:
 ```
 conda create -n cvpr_segfm_eval python=3.11 -y
 conda activate cvpr_segfm_eval
-pip install requirements.txt
+pip install -r requirements.txt
 ```
 
 Run the script as follows:
