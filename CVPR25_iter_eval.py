@@ -533,7 +533,7 @@ for docker in dockers:
             os.remove(join(input_temp, case))  
 
             metric_df = pd.DataFrame(metric)
-            metric_df.to_csv(join(team_outpath, teamname.split('_')[0] + '_metrics.csv'), index=False)
+            metric_df.to_csv(join(team_outpath, teamname + '_metrics.csv'), index=False)
 
         # Clean up for next docker
         torch.cuda.empty_cache()
