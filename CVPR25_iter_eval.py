@@ -463,9 +463,9 @@ for docker in dockers:
 
                 # Model inference on the current input
                 if torch.cuda.is_available(): # GPU available
-                    cmd = 'docker container run --gpus "device=0" -m 32G --name {} --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ {}:latest /bin/bash -c "sh predict.sh" '.format(teamname.replace('/', '_'), teamname)
+                    cmd = 'docker container run --gpus "device=0" -m 32G --name {} --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ {}:latest /bin/bash -c "sh predict.sh" '.format(teamname.replace('/', '_'), teamname.split('_')[0])
                 else:
-                    cmd = 'docker container run -m 32G --name {} --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ {}:latest /bin/bash -c "sh predict.sh" '.format(teamname.replace('/', '_'), teamname)
+                    cmd = 'docker container run -m 32G --name {} --rm -v $PWD/inputs/:/workspace/inputs/ -v $PWD/outputs/:/workspace/outputs/ {}:latest /bin/bash -c "sh predict.sh" '.format(teamname.replace('/', '_'), teamname.split('_')[0])
                 if verbose:
                     print(teamname, ' docker command:', cmd, '\n', 'testing image name:', case)
                 start_time = time.time()
@@ -533,11 +533,11 @@ for docker in dockers:
             os.remove(join(input_temp, case))  
 
             metric_df = pd.DataFrame(metric)
-            metric_df.to_csv(join(team_outpath, teamname.replace('/', '_') + '_metrics.csv'), index=False)
+            metric_df.to_csv(join(team_outpath, teamname.split('_')[0] + '_metrics.csv'), index=False)
 
         # Clean up for next docker
         torch.cuda.empty_cache()
-        os.system("docker rmi {}:latest".format(teamname))
+        os.system("docker rmi {}:latest".format(teamname.split('_')[0]))
         shutil.rmtree(input_temp)
         shutil.rmtree(output_temp)
         if time_warning: # repeat warning at the end as well
