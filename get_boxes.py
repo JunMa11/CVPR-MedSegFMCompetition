@@ -67,8 +67,10 @@ def mask3D_to_bbox(gt3D, file):
     b_dict = {}
     z_indices, y_indices, x_indices = np.where(gt3D > 0)
     z_min, z_max = np.min(z_indices), np.max(z_indices)
+    z_indices = np.unique(z_indices)
     # middle of z_indices
     z_middle = z_indices[len(z_indices)//2]
+
     D, H, W = gt3D.shape
     b_dict['z_min'] = z_min
     b_dict['z_max'] = z_max
