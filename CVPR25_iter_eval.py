@@ -128,7 +128,7 @@ import argparse
 from collections import OrderedDict
 import pandas as pd
 import numpy as np
-
+import traceback
 
 from scipy.ndimage import distance_transform_edt 
 import cc3d
@@ -551,3 +551,5 @@ for docker in dockers:
             print("[WARNING] Your model seems to take more than 90 seconds per class during inference for some images! The final test set will have a time constraint of 90s per class --> Make sure to optimize your approach!")
     except Exception as e:
         print(e)
+        traceback.print_exc()
+        print(f"Error processing {case} with docker {docker}. Skipping this docker.")
