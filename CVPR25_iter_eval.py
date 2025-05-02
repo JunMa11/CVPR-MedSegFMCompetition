@@ -396,6 +396,12 @@ for docker in dockers:
                             largest_component = (errors == largest_component_error)
 
                             edt = compute_edt(largest_component)
+                            edt *= largest_component # make sure correct voxels have a distance of 0
+                            if np.sum(edt) == 0: # no valid voxels to sample
+                                if verbose:
+                                    print("Error is extremely small --> Sampling uniformly instead of using EDT")
+                                edt = largest_component # in case EDT is empty (due to artifacts in resizing, simply sample a random voxel from the component), happens only for extremely small errors
+
                             center = sample_coord(edt)
 
                             if gts_cls[center] == 0: # oversegmentation -> place background click
@@ -412,6 +418,7 @@ for docker in dockers:
                             if verbose:
                                 print(f"Class {cls}: Largest error component center is at {center}")
                         else:
+                            clicks_order[ind].append(None)
                             if verbose:
                                 print(f"Class {cls}: No error connected components found. Prediction is perfect! No clicks were added.")
                     
