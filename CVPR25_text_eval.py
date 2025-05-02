@@ -194,11 +194,7 @@ for docker in dockers:
         metric['RunningTime'] = []  
         metric['DSC'] = []
         metric['NSD'] = []
-        metric['F1_0.5'] = []
-        metric['F1_0.6'] = []  
-        metric['F1_0.7'] = [] 
-        metric['F1_0.8'] = [] 
-        metric['F1_0.9'] = []  
+        metric['F1'] = []
 
         # To obtain the running time for each case, testing cases are inferred one-by-one
         for case in test_cases:
@@ -240,41 +236,26 @@ for docker in dockers:
 
                 if instance_label == 0:     # semantic masks
                     # note: the semantic labels may not be sequential
-                    dsc = compute_multi_class_dsc(seg_npz, gt_npz)
-                    nsd = compute_multi_class_nsd(seg_npz, gt_npz, spacing)
-                    f1_scores = {threshold: np.NAN for threshold in [0.5, 0.6, 0.7, 0.8, 0.9]}
+                    dsc = compute_multi_class_dsc(gt_npz, seg_npz)
+                    nsd = compute_multi_class_nsd(gt_npz, seg_npz, spacing)
+                    f1_score = np.NaN
                 elif instance_label == 1:  # instance masks
                     # Calculate F1 instead
                     if len(np.unique(seg_npz)) == 2:
                         print("converting segmentation to instance masks")
                         # convert prediction masks from binary to instance
-                        tumor_inst, tumor_n = cc3d.connected_components(
-                            seg_npz, connectivity=6, return_N=True
-                        )
+                        tumor_inst, tumor_n = cc3d.connected_components(seg_npz, connectivity=6, return_N=True)
 
                         # put the tumor instances back to gt_data_ori
                         seg_npz[tumor_inst > 0] = (tumor_inst[tumor_inst > 0] + np.max(seg_npz))
 
                     gt_npz = segmentation.relabel_sequential(gt_npz)[0]
                     seg_npz = segmentation.relabel_sequential(seg_npz)[0]
-                    
-                    
-                    cell_pred_num = np.max(seg_npz)
-                    cell_true_num = np.max(gt_npz)
 
-                    f1_scores = {}
-                    for threshold in [0.5, 0.6, 0.7, 0.8, 0.9]:
-                        tp, fp, fn = eval_tp_fp_fn(gt_npz, seg_npz, threshold=threshold)
-    
-                        if tp == 0:
-                            precision = 0
-                            recall = 0
-                            f1 = 0
-                        else:
-                            precision = tp / cell_pred_num
-                            recall = tp / cell_true_num
-                            f1 = 2 * (precision * recall)/ (precision + recall)
-                        f1_scores[threshold] = f1
+                    tp, fp, fn = eval_tp_fp_fn(gt, seg)        # default f1 overlap threshold is 0.5
+                    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+                    recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+                    f1_score = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
 
                     # Set DSC and NSD to None for instance masks
                     dsc = None
@@ -282,12 +263,9 @@ for docker in dockers:
                                      
                 metric['DSC'].append(round(dsc, 4) if dsc is not None else np.NAN)
                 metric['NSD'].append(round(nsd, 4) if nsd is not None else np.NAN)
-                # Append F1 scores for all thresholds
-                for threshold in [0.5, 0.6, 0.7, 0.8, 0.9]:
-                    value = f1_scores[threshold]
-                    metric[f'F1_{threshold}'].append(round(value, 4) if value != np.NAN else np.NAN)
+                metric['F1'].append(round(f1_score, 4) if f1_score is not None else np.NAN)
 
-                print(f"{case}: DSC={dsc if dsc is not None else np.NAN}, NSD={nsd if nsd is not None else np.NAN}, F1={f1_scores}")
+                print(f"{case}: DSC={dsc if dsc is not None else np.NAN}, NSD={nsd if nsd is not None else np.NAN}, F1={f1_score}")
             
             except Exception as e:
                 print(f"Error processing {case}: {e}")
