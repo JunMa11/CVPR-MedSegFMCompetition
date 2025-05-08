@@ -252,7 +252,7 @@ for docker in dockers:
                     gt_npz = segmentation.relabel_sequential(gt_npz)[0]
                     seg_npz = segmentation.relabel_sequential(seg_npz)[0]
 
-                    tp, fp, fn = eval_tp_fp_fn(gt, seg)        # default f1 overlap threshold is 0.5
+                    tp, fp, fn = eval_tp_fp_fn(gt_npz, seg_npz)        # default f1 overlap threshold is 0.5
                     precision = tp / (tp + fp) if (tp + fp) > 0 else 0
                     recall = tp / (tp + fn) if (tp + fn) > 0 else 0
                     f1_score = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
