@@ -35,8 +35,7 @@ import SimpleITK as sitk
 
 from SurfaceDice import compute_surface_distances, compute_surface_dice_at_tolerance, compute_dice_coefficient
 
-def compute_multi_class_dsc(gt, seg):
-    label_ids = np.unique(gt)[1:]
+def compute_multi_class_dsc(gt, seg, label_ids):
     dsc = [None] * len(label_ids)
     for idx, i in enumerate(label_ids):
         gt_i = gt == i
@@ -45,9 +44,8 @@ def compute_multi_class_dsc(gt, seg):
 
     return np.mean(dsc)
 
-def compute_multi_class_nsd(gt, seg, spacing, tolerance=2.0):
+def compute_multi_class_nsd(gt, seg, spacing, label_ids, tolerance=2.0):
     nsd = []
-    label_ids = np.unique(gt)[1:]
     nsd = [None] * len(label_ids)
     for idx, i in enumerate(label_ids):
         gt_i = gt == i
@@ -234,10 +232,13 @@ for docker in dockers:
                 spacing = img_npz['spacing']
                 instance_label = img_npz['text_prompts'].item()['instance_label']
 
+                class_ids = sorted([int(k) for k in img_npz['text_prompts'].item() if k != "instance_label"])
+                class_ids_array = np.array(class_ids, dtype=np.int32)
+
                 if instance_label == 0:     # semantic masks
                     # note: the semantic labels may not be sequential
-                    dsc = compute_multi_class_dsc(gt_npz, seg_npz)
-                    nsd = compute_multi_class_nsd(gt_npz, seg_npz, spacing)
+                    dsc = compute_multi_class_dsc(gt_npz, seg_npz, class_ids_array)
+                    nsd = compute_multi_class_nsd(gt_npz, seg_npz, spacing, class_ids_array)
                     f1_score = np.NaN
                 elif instance_label == 1:  # instance masks
                     # Calculate F1 instead
