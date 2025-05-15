@@ -42,7 +42,7 @@ def compute_multi_class_dsc(gt, seg, label_ids):
         seg_i = seg == i
         dsc[idx] = compute_dice_coefficient(gt_i, seg_i)
 
-    return np.mean(dsc)
+    return np.nanmean(dsc)
 
 def compute_multi_class_nsd(gt, seg, spacing, label_ids, tolerance=2.0):
     nsd = []
@@ -52,7 +52,7 @@ def compute_multi_class_nsd(gt, seg, spacing, label_ids, tolerance=2.0):
         seg_i = seg == i
         surface_distance = compute_surface_distances(gt_i, seg_i, spacing_mm=spacing)
         nsd[idx] = compute_surface_dice_at_tolerance(surface_distance, tolerance)
-    return np.mean(nsd)
+    return np.nanmean(nsd)
 
 def _label_overlap(x, y):
     """ fast function to get pixel overlaps between masks in x and y 
