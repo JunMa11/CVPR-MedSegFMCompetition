@@ -36,8 +36,9 @@ import SimpleITK as sitk
 from SurfaceDice import compute_surface_distances, compute_surface_dice_at_tolerance, compute_dice_coefficient
 
 def compute_multi_class_dsc(gt, seg, label_ids):
-    dsc = [None] * len(label_ids)
-    for idx, i in enumerate(label_ids):
+    present_labels = set(np.unique(gt)[1:]) & set(label_ids)
+    dsc = [None] * len(present_labels)
+    for idx, i in enumerate(present_labels):
         gt_i = gt == i
         seg_i = seg == i
         dsc[idx] = compute_dice_coefficient(gt_i, seg_i)
@@ -45,9 +46,9 @@ def compute_multi_class_dsc(gt, seg, label_ids):
     return np.nanmean(dsc)
 
 def compute_multi_class_nsd(gt, seg, spacing, label_ids, tolerance=2.0):
-    nsd = []
-    nsd = [None] * len(label_ids)
-    for idx, i in enumerate(label_ids):
+    present_labels = set(np.unique(gt)[1:]) & set(label_ids)
+    nsd = [None] * len(present_labels)
+    for idx, i in enumerate(present_labels):
         gt_i = gt == i
         seg_i = seg == i
         surface_distance = compute_surface_distances(gt_i, seg_i, spacing_mm=spacing)
