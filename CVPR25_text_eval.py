@@ -42,7 +42,6 @@ def compute_multi_class_dsc(gt, seg, label_ids):
         gt_i = gt == i
         seg_i = seg == i
         dsc[idx] = compute_dice_coefficient(gt_i, seg_i)
-
     return np.nanmean(dsc)
 
 def compute_multi_class_nsd(gt, seg, spacing, label_ids, tolerance=2.0):
@@ -97,6 +96,12 @@ def _intersection_over_union(masks_true, masks_pred):
         ground truth masks, where 0=NO masks; 1,2... are mask labels
     masks_pred: ND-array, int
         predicted masks, where 0=NO masks; 1,2... are mask labels
+
+    Returns
+    ------------
+    iou: ND-array, float
+        matrix of IOU pairs of size [masks_true.max()+1, masks_pred.max()+1]
+        iou[i, j] is the IoU between ground truth instance i+1 and predicted instance j+1.
     """
     overlap = _label_overlap(masks_true, masks_pred)
     n_pixels_pred = np.sum(overlap, axis=0, keepdims=True)
@@ -127,15 +132,15 @@ def _true_positive(iou, th):
     true_ind, pred_ind = linear_sum_assignment(costs)
     match_ok = iou[true_ind, pred_ind] >= th
     tp = match_ok.sum()
-    return tp
+    matched_pairs = [(t, p) for t, p, ok in zip(true_ind, pred_ind, match_ok) if ok]
+    return tp, matched_pairs
 
 def eval_tp_fp_fn(masks_true, masks_pred, threshold=0.5):
     num_inst_gt = np.max(masks_true)
     num_inst_seg = np.max(masks_pred)
     if num_inst_seg>0:
         iou = _intersection_over_union(masks_true, masks_pred)[1:, 1:]
-            # for k,th in enumerate(threshold):
-        tp = _true_positive(iou, threshold)
+        tp, matched_pairs = _true_positive(iou, threshold)
         fp = num_inst_seg - tp
         fn = num_inst_gt - tp
     else:
@@ -144,7 +149,7 @@ def eval_tp_fp_fn(masks_true, masks_pred, threshold=0.5):
         fp = 0
         fn = 0
         
-    return tp, fp, fn
+    return tp, fp, fn, matched_pairs
 
 parser = argparse.ArgumentParser('Segmentation eavluation for docker containers', add_help=False)
 parser.add_argument('-i', '--test_img_path', default='./3D_val_npz', type=str, help='testing data path')
@@ -194,6 +199,9 @@ for docker in dockers:
         metric['DSC'] = []
         metric['NSD'] = []
         metric['F1'] = []
+        metric['DSC_TP'] = []
+
+        missing_files = []
 
         # To obtain the running time for each case, testing cases are inferred one-by-one
         for case in test_cases:
@@ -241,6 +249,7 @@ for docker in dockers:
                     dsc = compute_multi_class_dsc(gt_npz, seg_npz, class_ids_array)
                     nsd = compute_multi_class_nsd(gt_npz, seg_npz, spacing, class_ids_array)
                     f1_score = np.NaN
+                    dsc_tp = np.NaN
                 elif instance_label == 1:  # instance masks
                     # Calculate F1 instead
                     if len(np.unique(seg_npz)) == 2:
@@ -254,10 +263,22 @@ for docker in dockers:
                     gt_npz = segmentation.relabel_sequential(gt_npz)[0]
                     seg_npz = segmentation.relabel_sequential(seg_npz)[0]
 
-                    tp, fp, fn = eval_tp_fp_fn(gt_npz, seg_npz)        # default f1 overlap threshold is 0.5
+                    tp, fp, fn, matched_pairs = eval_tp_fp_fn(gt_npz, seg_npz)        # default f1 overlap threshold is 0.5
                     precision = tp / (tp + fp) if (tp + fp) > 0 else 0
                     recall = tp / (tp + fn) if (tp + fn) > 0 else 0
                     f1_score = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+
+                    # compute DSC for TP cases
+                    if matched_pairs:
+                        dsc_list = []
+                        for gt_idx, pred_idx in matched_pairs:
+                            gt_mask = gt_npz == (gt_idx + 1)
+                            pred_mask = seg_npz == (pred_idx + 1)
+                            dsc_value = compute_dice_coefficient(gt_mask, pred_mask)
+                            dsc_list.append(dsc_value)
+                        dsc_tp = np.mean(dsc_list)
+                    else:
+                        dsc_tp = 0
 
                     # Set DSC and NSD to None for instance masks
                     dsc = None
@@ -266,11 +287,16 @@ for docker in dockers:
                 metric['DSC'].append(round(dsc, 4) if dsc is not None else np.NAN)
                 metric['NSD'].append(round(nsd, 4) if nsd is not None else np.NAN)
                 metric['F1'].append(round(f1_score, 4) if f1_score is not None else np.NAN)
+                metric['DSC_TP'].append(round(dsc_tp, 4) if dsc_tp is not None else np.NAN)
 
-                print(f"{case}: DSC={dsc if dsc is not None else np.NAN}, NSD={nsd if nsd is not None else np.NAN}, F1={f1_score}")
+                print(f"{case}: DSC={dsc if dsc is not None else np.NAN}, NSD={nsd if nsd is not None else np.NAN}, F1={f1_score}, DSC_TP={dsc_tp if dsc_tp is not None else np.NAN}")
             
             except Exception as e:
-                print(f"Error processing {case}: {e}")
+                print(f"ERROR processing {case}: {e}")
+                metric['DSC'].append(np.NAN)
+                metric['NSD'].append(np.NAN)
+                metric['F1'].append(np.NAN)
+                missing_files.append(f"{case}: {e}")
 
             # the segmentation file name should be the same as the testing image name
             try:
@@ -281,10 +307,17 @@ for docker in dockers:
 
             os.remove(join(input_temp, case))   # Moves the segmentation output file from output_temp to the appropriate team folder in demo_seg.
 
-        # save the metrics to a CSV file
-        metric_df = pd.DataFrame(metric)
-        metric_df.to_csv(join(team_outpath, teamname + '_metrics.csv'), index=False)
-        print(f"Metrics saved to {join(team_outpath, teamname + '_metrics.csv')}")
+            # save the metrics to a CSV file
+            metric_df = pd.DataFrame(metric)
+            metric_df.to_csv(join(team_outpath, teamname + '_metrics.csv'), index=False)
+            print(f"Metrics saved to {join(team_outpath, teamname + '_metrics.csv')}")
+
+            # Save missing files log
+            if missing_files:
+                missing_file_path = os.path.join(team_outpath, f"{teamname}_error_files.txt")
+                with open(missing_file_path, 'w') as f:
+                    f.write("\n".join(missing_files))
+                print(f"Error files logged to {missing_file_path}")
 
         # clean up
         torch.cuda.empty_cache()
