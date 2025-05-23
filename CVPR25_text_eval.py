@@ -148,6 +148,7 @@ def eval_tp_fp_fn(masks_true, masks_pred, threshold=0.5):
         tp = 0
         fp = 0
         fn = 0
+        matched_pairs = None
         
     return tp, fp, fn, matched_pairs
 
