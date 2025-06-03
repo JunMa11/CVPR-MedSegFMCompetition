@@ -372,7 +372,6 @@ for docker in dockers:
                         segs = patched_np_load(join(output_temp, case), allow_pickle=True)['segs'].astype(np.uint8) # previous prediction
                     else:
                         segs = np.zeros_like(gts).astype(np.uint8) # in case the bbox prediction did not produce a result
-                    all_segs.append(segs.astype(np.uint8))
 
                     # Refinement clicks
                     for ind, cls in enumerate(sorted(unique_gts[1:])):
